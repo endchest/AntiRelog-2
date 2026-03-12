@@ -40,34 +40,26 @@ public class CooldownManager {
     }
 
     public void addItemCooldown(Player player, CooldownType type, long duration) {
-        if (!plugin.isProtocolLibEnabled()) {
-            return;
-        }
+        if (!VersionUtils.isVersion(11)) return;
+
         int durationInTicks = (int) Math.ceil(duration / 50.0);
-
-        PacketContainer packetContainer = ProtocolLibUtils.createCooldownPacket(type.getMaterial(), durationInTicks);
-
-        ProtocolLibUtils.sendPacket(packetContainer, player);
-
+        player.setCooldown(type.getMaterial(), durationInTicks);
 
         ScheduledFuture future = scheduledExecutorService.schedule(() -> {
             removeItemCooldown(player, type);
-            //futures.remove(player, type);
         }, duration, TimeUnit.MILLISECONDS);
         futures.put(player, type, future);
     }
 
     public void removeItemCooldown(Player player, CooldownType type) {
-        if (!plugin.isProtocolLibEnabled()) {
-            return;
-        }
+        if (!VersionUtils.isVersion(11)) return;
+
         ScheduledFuture future = futures.get(player, type);
         if (future != null && !future.isCancelled()) {
             future.cancel(false);
             futures.remove(player, type);
         }
-        PacketContainer packetContainer1 = ProtocolLibUtils.createCooldownPacket(type.getMaterial(), 0);
-        ProtocolLibUtils.sendPacket(packetContainer1, player);
+        player.setCooldown(type.getMaterial(), 0);
     }
 
     public void enteredToPvp(Player player) {
@@ -132,7 +124,9 @@ public class CooldownManager {
         ENDER_PEARL(Material.ENDER_PEARL, Settings::getEnderPearlCooldown),
         CHORUS(Material.matchMaterial("CHORUS_FRUIT"), Settings::getСhorusCooldown),
         TOTEM(VersionUtils.isVersion(13) ? Material.TOTEM_OF_UNDYING : Material.matchMaterial("TOTEM"), Settings::getTotemCooldown),
-        FIREWORK(VersionUtils.isVersion(13) ? Material.FIREWORK_ROCKET : Material.matchMaterial("FIREWORK"), Settings::getFireworkCooldown);
+        FIREWORK(VersionUtils.isVersion(13) ? Material.FIREWORK_ROCKET : Material.matchMaterial("FIREWORK"), Settings::getFireworkCooldown),
+        RESPAWN_ANCHOR(VersionUtils.isVersion(16) ? Material.RESPAWN_ANCHOR : Material.OBSIDIAN, Settings::getRespawnAnchorCooldown),
+        END_CRYSTAL(Material.END_CRYSTAL, Settings::getEndCrystalCooldown);
 
         public static CooldownType[] values = values();
 

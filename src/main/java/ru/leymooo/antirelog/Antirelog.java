@@ -10,7 +10,6 @@ import ru.leymooo.annotatedyaml.ConfigurationProvider;
 import ru.leymooo.annotatedyaml.provider.BukkitConfigurationProvider;
 import ru.leymooo.antirelog.config.Settings;
 import ru.leymooo.antirelog.listeners.CooldownListener;
-import ru.leymooo.antirelog.listeners.EssentialsTeleportListener;
 import ru.leymooo.antirelog.listeners.PvPListener;
 import ru.leymooo.antirelog.listeners.WorldGuardListener;
 import ru.leymooo.antirelog.manager.BossbarManager;
@@ -18,6 +17,7 @@ import ru.leymooo.antirelog.manager.CooldownManager;
 import ru.leymooo.antirelog.manager.PowerUpsManager;
 import ru.leymooo.antirelog.manager.PvPManager;
 import ru.leymooo.antirelog.util.ProtocolLibUtils;
+import ru.leymooo.antirelog.util.VersionUtils;
 
 import java.io.File;
 import java.io.IOException;
@@ -30,7 +30,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.logging.Level;
 import java.util.stream.Stream;
-import ru.leymooo.antirelog.util.VersionUtils;
 
 public class Antirelog extends JavaPlugin {
     private Settings settings;
@@ -186,11 +185,6 @@ public class Antirelog extends JavaPlugin {
             WorldGuardWrapper.getInstance().registerEvents(this);
             Bukkit.getPluginManager().registerEvents(new WorldGuardListener(settings, pvpManager), this);
             worldguard = true;
-        }
-        try {
-            Class.forName("net.ess3.api.events.teleport.PreTeleportEvent");
-            Bukkit.getPluginManager().registerEvents(new EssentialsTeleportListener(pvpManager, settings), this);
-        } catch (ClassNotFoundException e) {
         }
         protocolLib = Bukkit.getPluginManager().isPluginEnabled("ProtocolLib") && VersionUtils.isVersion(9);
     }

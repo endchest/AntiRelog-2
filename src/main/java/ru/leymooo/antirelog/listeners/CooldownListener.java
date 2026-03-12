@@ -1,12 +1,14 @@
 package ru.leymooo.antirelog.listeners;
 
 import org.bukkit.Material;
+import org.bukkit.block.Block;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityResurrectEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -36,6 +38,7 @@ public class CooldownListener implements Listener {
         this.pvpManager = pvpManager;
         this.settings = settings;
         registerEntityResurrectEvent(plugin);
+        registerEndCrystalEvent(plugin);
     }
 
     private void registerEntityResurrectEvent(Plugin plugin) {
@@ -67,12 +70,45 @@ public class CooldownListener implements Listener {
         }
     }
 
+    // EntityPlaceEvent появился в 1.14
+    private void registerEndCrystalEvent(Plugin plugin) {
+        if (VersionUtils.isVersion(14)) {
+            plugin.getServer().getPluginManager().registerEvents(new Listener() {
+                @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+                public void onEndCrystalPlace(EntityPlaceEvent event) {
+                    if (event.getEntityType() != EntityType.END_CRYSTAL) return;
+
+                    Player player = event.getPlayer();
+                    if (player == null) return;
+                    if (pvpManager.isBypassed(player)) return;
+
+                    long cooldownTime = settings.getEndCrystalCooldown();
+                    if (cooldownTime == 0) return;
+
+                    if (cooldownTime <= -1) {
+                        cancelEventIfInPvp(event, CooldownType.END_CRYSTAL, player);
+                        return;
+                    }
+
+                    cooldownTime = cooldownTime * 1000;
+
+                    if (checkCooldown(player, CooldownType.END_CRYSTAL, cooldownTime)) {
+                        event.setCancelled(true);
+                        return;
+                    }
+
+                    cooldownManager.addCooldown(player, CooldownType.END_CRYSTAL);
+                    addItemCooldownIfNeeded(player, CooldownType.END_CRYSTAL);
+                }
+            }, plugin);
+        }
+    }
+
     @EventHandler
     public void onItemEat(PlayerItemConsumeEvent event) {
         ItemStack consumeItem = event.getItem();
 
         CooldownType cooldownType = null;
-
         long cooldownTime = 0;
 
         if (isChorus(consumeItem)) {
@@ -101,7 +137,6 @@ public class CooldownListener implements Listener {
             cooldownManager.addCooldown(event.getPlayer(), cooldownType);
             addItemCooldownIfNeeded(event.getPlayer(), cooldownType);
         }
-
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -117,25 +152,40 @@ public class CooldownListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInteract(PlayerInteractEvent event) {
-        if (settings.getEnderPearlCooldown() == 0 && settings.getFireworkCooldown() == 0) return;
-        if (!event.hasItem()) return;
         if (pvpManager.isBypassed(event.getPlayer())) return;
 
-        if (settings.getEnderPearlCooldown() != 0 && event.getItem().getType() == Material.ENDER_PEARL) {
+        // --- Остальные предметы требуют наличия итема в руке ---
+        if (!event.hasItem()) return;
+
+        Material itemType = event.getItem().getType();
+
+        if (settings.getEnderPearlCooldown() != 0 && itemType == Material.ENDER_PEARL) {
             if (settings.getEnderPearlCooldown() <= -1) {
                 cancelEventIfInPvp(event, CooldownType.ENDER_PEARL, event.getPlayer());
                 return;
             }
-            if (checkCooldown(event.getPlayer(), CooldownType.ENDER_PEARL,
-                    settings.getEnderPearlCooldown() * 1000)) {
+            if (checkCooldown(event.getPlayer(), CooldownType.ENDER_PEARL, settings.getEnderPearlCooldown() * 1000)) {
                 event.setCancelled(true);
             }
+        } else if (VersionUtils.isVersion(16) && settings.getRespawnAnchorCooldown() != 0
+                && itemType == Material.RESPAWN_ANCHOR
+                && event.getAction().name().startsWith("RIGHT_CLICK")) {
+            long cooldownTime = settings.getRespawnAnchorCooldown();
+            if (cooldownTime <= -1) {
+                cancelEventIfInPvp(event, CooldownType.RESPAWN_ANCHOR, event.getPlayer());
+                return;
+            }
+            if (checkCooldown(event.getPlayer(), CooldownType.RESPAWN_ANCHOR, cooldownTime * 1000)) {
+                event.setCancelled(true);
+                return;
+            }
+            cooldownManager.addCooldown(event.getPlayer(), CooldownType.RESPAWN_ANCHOR);
+            addItemCooldownIfNeeded(event.getPlayer(), CooldownType.RESPAWN_ANCHOR);
         } else if (settings.getFireworkCooldown() != 0 && isFirework(event.getItem())) {
             if (settings.getFireworkCooldown() <= -1) {
                 cancelEventIfInPvp(event, CooldownType.FIREWORK, event.getPlayer());
                 return;
             }
-
             if (checkCooldown(event.getPlayer(), CooldownType.FIREWORK, settings.getFireworkCooldown() * 1000)) {
                 event.setCancelled(true);
                 return;
@@ -143,7 +193,6 @@ public class CooldownListener implements Listener {
             cooldownManager.addCooldown(event.getPlayer(), CooldownType.FIREWORK);
             addItemCooldownIfNeeded(event.getPlayer(), CooldownType.FIREWORK);
         }
-
     }
 
     @EventHandler
@@ -195,14 +244,13 @@ public class CooldownListener implements Listener {
 
     private void cancelEventIfInPvp(Cancellable event, CooldownType type, Player player) {
         if (pvpManager.isInPvP(player)) {
-            ((Cancellable) event).setCancelled(true);
+            event.setCancelled(true);
             String message = type == CooldownType.TOTEM ? settings.getMessages().getTotemDisabledInPvp() :
                     settings.getMessages().getItemDisabledInPvp();
             if (!message.isEmpty()) {
                 player.sendMessage(Utils.color(message));
             }
         }
-        return;
     }
 
     private boolean checkCooldown(Player player, CooldownType cooldownType, long cooldownTime) {
@@ -230,5 +278,4 @@ public class CooldownListener implements Listener {
             cooldownManager.addItemCooldown(player, cooldownType, cooldownType.getCooldown(settings) * 1000);
         }
     }
-
 }

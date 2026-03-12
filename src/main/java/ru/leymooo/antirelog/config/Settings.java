@@ -135,6 +135,14 @@ public class Settings extends Configuration {
     @Ignore
     private Set<String> disabledWorldsSet;
 
+    @Comment({"Кулдавн для якорей возрождения во время пвп.", "Значение 0 отключает кулдаун; -1 отключает использование во время пвп"})
+    @Key("respawn-anchor-cooldown")
+    private int respawnAnchorCooldown = 30;
+
+    @Comment({"Кулдавн для кристаллов края во время пвп.", "Значение 0 отключает кулдаун; -1 отключает использование во время пвп"})
+    @Key("end-crystal-cooldown")
+    private int endCrystalCooldown = 30;
+
     @Override
     public void loaded() {
         this.ignoredWgRegionsSet = ignoredWgRegions.stream().map(String::toLowerCase).collect(Collectors.toSet());
@@ -251,6 +259,14 @@ public class Settings extends Configuration {
 
     public Set<String> getDisabledWorlds() {
         return disabledWorldsSet;
+    }
+
+    public int getRespawnAnchorCooldown() {
+        return respawnAnchorCooldown;
+    }
+
+    public int getEndCrystalCooldown() {
+        return endCrystalCooldown;
     }
 
     @Override

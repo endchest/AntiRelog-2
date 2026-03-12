@@ -7,14 +7,14 @@ import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Player;
 import ru.leymooo.antirelog.config.Settings;
 import ru.leymooo.antirelog.util.Utils;
-import ru.leymooo.antirelog.util.VersionUtils;
 
 import java.util.HashMap;
 import java.util.Map;
 
 public class BossbarManager {
 
-    private final Map<Integer, BossBar> bossBars = new HashMap<>();
+    private final Map<Player, BossBar> playerBossBars = new HashMap<>(); // персональные бары
+    private final Map<Player, String> lastOpponent = new HashMap<>();
     private final Settings settings;
 
     public BossbarManager(Settings settings) {
@@ -22,47 +22,50 @@ public class BossbarManager {
     }
 
     public void createBossBars() {
-        bossBars.clear();
-        if (VersionUtils.isVersion(9) && settings.getPvpTime() > 0) {
-            String title = Utils.color(settings.getMessages().getInPvpBossbar());
-            if (!title.isEmpty()) {
-                double add = 1d / (double) settings.getPvpTime();
-                double progress = add;
-                for (int i = 1; i <= settings.getPvpTime(); i++) {
-                    String actualTitle = Utils.replaceTime(title, i);
-                    BossBar bar = Bukkit.createBossBar(actualTitle, BarColor.RED, BarStyle.SOLID);
-                    bar.setProgress(progress);
-                    progress += add;
-                    bossBars.put(i, bar);
-                    if (progress > 1.000d) {
-                        progress = 1.000d;
-                    }
-                }
-            }
-        }
+        // Предварительное создание больше не нужно — бары создаём динамически.
+        clearBossbars();
     }
 
-    public void setBossBar(Player player, int time) {
-        if (!bossBars.isEmpty()) {
-            for (BossBar bar : bossBars.values()) {
-                bar.removePlayer(player);
-            }
-            bossBars.get(time).addPlayer(player);
+    public void setBossBar(Player player, int time, String opponentName) {
+        String titleTemplate = settings.getMessages().getInPvpBossbar();
+        if (titleTemplate.isEmpty()) {
+            return;
         }
+
+        if (opponentName != null) {
+            lastOpponent.put(player, opponentName);
+        }
+
+        String opponent = lastOpponent.getOrDefault(player, "");
+        String title = Utils.color(
+                Utils.replaceTime(titleTemplate, time)
+                        .replace("%opponent%", opponent)
+        );
+
+        double progress = Math.min((double) time / settings.getPvpTime(), 1.0);
+
+        BossBar bar = playerBossBars.get(player);
+        if (bar == null) {
+            bar = Bukkit.createBossBar(title, BarColor.RED, BarStyle.SOLID);
+            bar.addPlayer(player);
+            playerBossBars.put(player, bar);
+        } else {
+            bar.setTitle(title);
+        }
+        bar.setProgress(progress);
     }
 
     public void clearBossbar(Player player) {
-        for (BossBar bar : bossBars.values()) {
-            bar.removePlayer(player);
+        BossBar bar = playerBossBars.remove(player);
+        if (bar != null) {
+            bar.removeAll();
         }
+        lastOpponent.remove(player);
     }
 
     public void clearBossbars() {
-        if (!bossBars.isEmpty()) {
-            for (BossBar bar : bossBars.values()) {
-                bar.removeAll();
-            }
-        }
-        bossBars.clear();
+        playerBossBars.forEach((p, bar) -> bar.removeAll());
+        playerBossBars.clear();
+        lastOpponent.clear();
     }
 }

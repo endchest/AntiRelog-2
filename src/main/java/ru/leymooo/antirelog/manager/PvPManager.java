@@ -19,9 +19,6 @@ import ru.leymooo.antirelog.util.Utils;
 import ru.leymooo.antirelog.util.VersionUtils;
 
 import java.util.*;
-import java.util.concurrent.Callable;
-import java.util.function.Consumer;
-import java.util.function.Function;
 
 public class PvPManager {
 
@@ -82,7 +79,7 @@ public class PvPManager {
                         stopPvP(player);
                     }
                 } else {
-                    updatePvpMode(player, bypassed, timeRemaining);
+                    updatePvpMode(player, bypassed, timeRemaining, null);
                     callUpdateEvent(player, currentTime, timeRemaining);
                 }
             }
@@ -122,7 +119,7 @@ public class PvPManager {
         }
     }
 
-    private void tryStartPvP(Player attacker, Player defender) {
+    public void tryStartPvP(Player attacker, Player defender) {
         if (isInIgnoredWorld(attacker)) {
             return;
         }
@@ -168,10 +165,10 @@ public class PvPManager {
             if (callPvpPreStartEvent(defender, attacker, pvpStatus)) {
                 if (attackerInPvp) {
                     updateAttackerAndCallEvent(attacker, defender, attackerBypassed);
-                    startPvp(defender, defenderBypassed, false);
+                    startPvp(defender, defenderBypassed, false, attacker.getName());
                 } else {
                     updateDefenderAndCallEvent(defender, attacker, defenderBypassed);
-                    startPvp(attacker, attackerBypassed, true);
+                    startPvp(attacker, attackerBypassed, true, defender.getName());
                 }
                 Bukkit.getPluginManager().callEvent(new PvpStartedEvent(defender, attacker, settings.getPvpTime(), pvpStatus));
             }
@@ -179,15 +176,15 @@ public class PvPManager {
         }
 
         if (callPvpPreStartEvent(defender, attacker, pvpStatus)) {
-            startPvp(attacker, attackerBypassed, true);
-            startPvp(defender, defenderBypassed, false);
+            startPvp(attacker, attackerBypassed, true, defender.getName());
+            startPvp(defender, defenderBypassed, false, attacker.getName());
             Bukkit.getPluginManager().callEvent(new PvpStartedEvent(defender, attacker, settings.getPvpTime(), pvpStatus));
         }
 
     }
 
 
-    private void startPvp(Player player, boolean bypassed, boolean attacker) {
+    public void startPvp(Player player, boolean bypassed, boolean attacker, String opponentName) {
         if (!bypassed) {
             String message = Utils.color(settings.getMessages().getPvpStarted());
             if (!message.isEmpty()) {
@@ -198,16 +195,16 @@ public class PvPManager {
             }
             sendTitles(player, true);
         }
-        updatePvpMode(player, bypassed, settings.getPvpTime());
+        updatePvpMode(player, bypassed, settings.getPvpTime(), opponentName);
         player.setNoDamageTicks(0);
     }
 
-    private void updatePvpMode(Player player, boolean bypassed, int newTime) {
+    public void updatePvpMode(Player player, boolean bypassed, int newTime, String opponentName) {
         if (bypassed) {
             silentPvpMap.put(player, newTime);
         } else {
             pvpMap.put(player, newTime);
-            bossbarManager.setBossBar(player, newTime);
+            bossbarManager.setBossBar(player, newTime, opponentName);
             String actionBar = settings.getMessages().getInPvpActionbar();
             if (!actionBar.isEmpty()) {
                 sendActionBar(player, Utils.color(Utils.replaceTime(actionBar, newTime)));
@@ -230,7 +227,7 @@ public class PvPManager {
 
     private void updateAttackerAndCallEvent(Player attacker, Player defender, boolean bypassed) {
         int oldTime = bypassed ? getTimeRemainingInPvPSilent(attacker) : getTimeRemainingInPvP(attacker);
-        updatePvpMode(attacker, bypassed, settings.getPvpTime());
+        updatePvpMode(attacker, bypassed, settings.getPvpTime(), defender.getName());
         PvpTimeUpdateEvent pvpTimeUpdateEvent = new PvpTimeUpdateEvent(attacker, oldTime, settings.getPvpTime());
         pvpTimeUpdateEvent.setDamagedPlayer(defender);
         Bukkit.getPluginManager().callEvent(pvpTimeUpdateEvent);
@@ -238,7 +235,7 @@ public class PvPManager {
 
     private void updateDefenderAndCallEvent(Player defender, Player attackedBy, boolean bypassed) {
         int oldTime = bypassed ? getTimeRemainingInPvPSilent(defender) : getTimeRemainingInPvP(defender);
-        updatePvpMode(defender, bypassed, settings.getPvpTime());
+        updatePvpMode(defender, bypassed, settings.getPvpTime(), null);
         PvpTimeUpdateEvent pvpTimeUpdateEvent = new PvpTimeUpdateEvent(defender, oldTime, settings.getPvpTime());
         pvpTimeUpdateEvent.setDamagedBy(attackedBy);
         Bukkit.getPluginManager().callEvent(pvpTimeUpdateEvent);
