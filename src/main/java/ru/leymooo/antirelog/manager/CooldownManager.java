@@ -80,7 +80,9 @@ public class CooldownManager {
     public void removedFromPvp(Player player) {
         for (CooldownType cooldownType : CooldownType.values) {
             int cooldown = cooldownType.getCooldown(settings);
-            if (cooldown > 0 && hasCooldown(player, cooldownType, cooldown * 1000)) {
+            if (cooldown < 0) {
+                removeItemCooldown(player, cooldownType);
+            } else if (cooldown > 0 && hasCooldown(player, cooldownType, cooldown * 1000)) {
                 removeItemCooldown(player, cooldownType);
             }
         }

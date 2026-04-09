@@ -3,6 +3,7 @@ package ru.leymooo.antirelog.listeners;
 import org.bukkit.Material;
 import org.bukkit.block.Block;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Firework;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.EventHandler;
@@ -11,6 +12,9 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityPlaceEvent;
 import org.bukkit.event.entity.EntityResurrectEvent;
 import org.bukkit.event.entity.ProjectileLaunchEvent;
+import org.bukkit.inventory.meta.Damageable;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.geysermc.floodgate.api.FloodgateApi;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerItemConsumeEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
@@ -25,6 +29,9 @@ import ru.leymooo.antirelog.manager.PvPManager;
 import ru.leymooo.antirelog.util.Utils;
 import ru.leymooo.antirelog.util.VersionUtils;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
 public class CooldownListener implements Listener {
@@ -32,11 +39,14 @@ public class CooldownListener implements Listener {
     private final CooldownManager cooldownManager;
     private final PvPManager pvpManager;
     private final Settings settings;
+    private final boolean floodgateEnabled;
+    private final Map<UUID, ItemStack> brokenElytraPlayers = new HashMap<>();
 
     public CooldownListener(Plugin plugin, CooldownManager cooldownManager, PvPManager pvpManager, Settings settings) {
         this.cooldownManager = cooldownManager;
         this.pvpManager = pvpManager;
         this.settings = settings;
+        this.floodgateEnabled = plugin.getServer().getPluginManager().isPluginEnabled("floodgate");
         registerEntityResurrectEvent(plugin);
         registerEndCrystalEvent(plugin);
     }
@@ -150,6 +160,43 @@ public class CooldownListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onFireworkLaunch(ProjectileLaunchEvent e) {
+        if (!(e.getEntity() instanceof Firework)) return;
+
+        Player player;
+        if (e.getEntity().getShooter() instanceof Player) {
+            player = (Player) e.getEntity().getShooter();
+        } else {
+            // При использовании с элитрой shooter может быть null — ищем ближайшего игрока
+            player = e.getEntity().getNearbyEntities(1, 1, 1).stream()
+                    .filter(entity -> entity instanceof Player)
+                    .map(entity -> (Player) entity)
+                    .findFirst().orElse(null);
+            if (player == null) return;
+        }
+        if (pvpManager.isBypassed(player)) return;
+
+        long cooldownTime = settings.getFireworkCooldown();
+        if (cooldownTime == 0) return;
+
+        if (cooldownTime <= -1) {
+            cancelEventIfInPvp(e, CooldownType.FIREWORK, player);
+            if (pvpManager.isInPvP(player) && isBedrockPlayer(player)) {
+                breakElytra(player);
+            }
+            return;
+        }
+
+        if (checkCooldown(player, CooldownType.FIREWORK, cooldownTime * 1000)) {
+            e.setCancelled(true);
+            return;
+        }
+
+        cooldownManager.addCooldown(player, CooldownType.FIREWORK);
+        addItemCooldownIfNeeded(player, CooldownType.FIREWORK);
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
     public void onInteract(PlayerInteractEvent event) {
         if (pvpManager.isBypassed(event.getPlayer())) return;
@@ -167,6 +214,21 @@ public class CooldownListener implements Listener {
             if (checkCooldown(event.getPlayer(), CooldownType.ENDER_PEARL, settings.getEnderPearlCooldown() * 1000)) {
                 event.setCancelled(true);
             }
+        } else if (isFirework(event.getItem()) && settings.getFireworkCooldown() != 0) {
+            long cooldownTime = settings.getFireworkCooldown();
+            if (cooldownTime <= -1) {
+                cancelEventIfInPvp(event, CooldownType.FIREWORK, event.getPlayer());
+                if (pvpManager.isInPvP(event.getPlayer()) && isBedrockPlayer(event.getPlayer())) {
+                    breakElytra(event.getPlayer());
+                }
+                return;
+            }
+            if (checkCooldown(event.getPlayer(), CooldownType.FIREWORK, cooldownTime * 1000)) {
+                event.setCancelled(true);
+                return;
+            }
+            cooldownManager.addCooldown(event.getPlayer(), CooldownType.FIREWORK);
+            addItemCooldownIfNeeded(event.getPlayer(), CooldownType.FIREWORK);
         } else if (VersionUtils.isVersion(16) && settings.getRespawnAnchorCooldown() != 0
                 && itemType == Material.RESPAWN_ANCHOR
                 && event.getAction().name().startsWith("RIGHT_CLICK")) {
@@ -181,23 +243,13 @@ public class CooldownListener implements Listener {
             }
             cooldownManager.addCooldown(event.getPlayer(), CooldownType.RESPAWN_ANCHOR);
             addItemCooldownIfNeeded(event.getPlayer(), CooldownType.RESPAWN_ANCHOR);
-        } else if (settings.getFireworkCooldown() != 0 && isFirework(event.getItem())) {
-            if (settings.getFireworkCooldown() <= -1) {
-                cancelEventIfInPvp(event, CooldownType.FIREWORK, event.getPlayer());
-                return;
-            }
-            if (checkCooldown(event.getPlayer(), CooldownType.FIREWORK, settings.getFireworkCooldown() * 1000)) {
-                event.setCancelled(true);
-                return;
-            }
-            cooldownManager.addCooldown(event.getPlayer(), CooldownType.FIREWORK);
-            addItemCooldownIfNeeded(event.getPlayer(), CooldownType.FIREWORK);
         }
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         cooldownManager.remove(event.getPlayer());
+        restoreElytra(event.getPlayer());
     }
 
     @EventHandler
@@ -219,6 +271,7 @@ public class CooldownListener implements Listener {
     @EventHandler
     public void onPvpStop(PvpStoppedEvent event) {
         cooldownManager.removedFromPvp(event.getPlayer());
+        restoreElytra(event.getPlayer());
     }
 
     private boolean isChorus(ItemStack itemStack) {
@@ -238,11 +291,11 @@ public class CooldownListener implements Listener {
                 || (isGoldenApple(itemStack) && itemStack.getDurability() >= 1);
     }
 
-    private boolean isFirework(ItemStack itemStack) {
+    public boolean isFirework(ItemStack itemStack) {
         return VersionUtils.isVersion(13) ? itemStack.getType() == Material.FIREWORK_ROCKET : itemStack.getType() == Material.getMaterial("FIREWORK");
     }
 
-    private void cancelEventIfInPvp(Cancellable event, CooldownType type, Player player) {
+    public void cancelEventIfInPvp(Cancellable event, CooldownType type, Player player) {
         if (pvpManager.isInPvP(player)) {
             event.setCancelled(true);
             String message = type == CooldownType.TOTEM ? settings.getMessages().getTotemDisabledInPvp() :
@@ -277,5 +330,65 @@ public class CooldownListener implements Listener {
         } else {
             cooldownManager.addItemCooldown(player, cooldownType, cooldownType.getCooldown(settings) * 1000);
         }
+    }
+
+    private boolean isBedrockPlayer(Player player) {
+        if (!floodgateEnabled) return false;
+        return FloodgateApi.getInstance().isFloodgatePlayer(player.getUniqueId());
+    }
+
+    private void breakElytra(Player player) {
+        // Не ломаем повторно если уже сломана этим плагином
+        if (brokenElytraPlayers.containsKey(player.getUniqueId())) return;
+
+        ItemStack chestplate = player.getInventory().getChestplate();
+        if (chestplate == null || chestplate.getType() != Material.ELYTRA) return;
+        ItemMeta meta = chestplate.getItemMeta();
+        if (!(meta instanceof Damageable)) return;
+
+        // Сохраняем оригинал (клон с исходным дамагом)
+        brokenElytraPlayers.put(player.getUniqueId(), chestplate.clone());
+
+        ((Damageable) meta).setDamage(chestplate.getType().getMaxDurability() - 1);
+        chestplate.setItemMeta(meta);
+        player.getInventory().setChestplate(chestplate);
+        player.updateInventory();
+    }
+
+    private void restoreElytra(Player player) {
+        ItemStack original = brokenElytraPlayers.remove(player.getUniqueId());
+        if (original == null) return;
+
+        int brokenDamage = original.getType().getMaxDurability() - 1;
+        int originalDamage = ((Damageable) original.getItemMeta()).getDamage();
+
+        // Проверяем слот нагрудника первым
+        ItemStack chestplate = player.getInventory().getChestplate();
+        if (chestplate != null && chestplate.getType() == Material.ELYTRA) {
+            ItemMeta meta = chestplate.getItemMeta();
+            if (meta instanceof Damageable && ((Damageable) meta).getDamage() == brokenDamage) {
+                ((Damageable) meta).setDamage(originalDamage);
+                chestplate.setItemMeta(meta);
+                player.getInventory().setChestplate(chestplate);
+                player.updateInventory();
+                return;
+            }
+        }
+
+        // Если перенесли в основной инвентарь — явно ищем по слотам и применяем setItem
+        for (int i = 0; i < player.getInventory().getSize(); i++) {
+            ItemStack item = player.getInventory().getItem(i);
+            if (item == null || item.getType() != Material.ELYTRA) continue;
+            ItemMeta meta = item.getItemMeta();
+            if (!(meta instanceof Damageable)) continue;
+            if (((Damageable) meta).getDamage() == brokenDamage) {
+                ((Damageable) meta).setDamage(originalDamage);
+                item.setItemMeta(meta);
+                player.getInventory().setItem(i, item);
+                player.updateInventory();
+                return;
+            }
+        }
+        // Если не нашли (выбросил/отдал) — запись уже удалена, ничего не делаем
     }
 }

@@ -3,6 +3,7 @@ package ru.leymooo.antirelog;
 import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.codemc.worldguardwrapper.WorldGuardWrapper;
 import ru.leymooo.annotatedyaml.Configuration;
@@ -53,10 +54,16 @@ public class Antirelog extends JavaPlugin {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (args.length > 0 && args[0].equalsIgnoreCase("reload") && sender.hasPermission("antirelog.reload")) {
-            reloadSettings();
-            sender.sendMessage("§aReloaded");
-            getLogger().info(settings.toString());
+        if (args.length > 0 && sender.hasPermission("antirelog.reload")) {
+            if (args[0].equalsIgnoreCase("reload") ) {
+                reloadSettings();
+                sender.sendMessage("§aReloaded");
+                getLogger().info(settings.toString());
+            }
+            if (args[0].equalsIgnoreCase("test") ) {
+                getPvpManager().tryStartPvP((Player) sender, (Player) sender);
+                sender.sendMessage("§aTest");
+            }
         }
         return true;
     }
