@@ -21,6 +21,9 @@ import ru.leymooo.antirelog.util.Utils;
 import ru.leymooo.antirelog.util.VersionUtils;
 
 import java.util.HashMap;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -28,6 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class PvPListener implements Listener {
 
     private final static String META_KEY = "ar-f-shooter";
+    private final static List<String> SERVER_SPAM_KICK_REASONS = Arrays.asList("spam");
 
     private final Plugin plugin;
     private final PvPManager pvpManager;
@@ -148,22 +152,34 @@ public class PvPListener implements Listener {
             return;
         }
 
-        pvpManager.stopPvPSilent(player);
+        if (!shouldPunishKick(e)) {
+            pvpManager.stopPvPSilent(player);
+            return;
+        }
 
+        pvpManager.stopPvPSilent(player);
+        kickedInPvp(player);
+    }
+
+    private boolean shouldPunishKick(PlayerKickEvent event) {
         if (settings.getKickMessages().isEmpty()) {
-            kickedInPvp(player);
-            return;
+            return true;
         }
-        if (e.getReason() == null) {
-            return;
+        if (event.getReason() == null) {
+            return false;
         }
-        String reason = ChatColor.stripColor(e.getReason().toLowerCase());
-        for (String killReason : settings.getKickMessages()) {
-            if (reason.contains(killReason.toLowerCase())) {
-                kickedInPvp(player);
-                return;
+        String reason = ChatColor.stripColor(event.getReason()).toLowerCase(Locale.ROOT);
+        for (String spamReason : SERVER_SPAM_KICK_REASONS) {
+            if (reason.contains(spamReason)) {
+                return true;
             }
         }
+        for (String killReason : settings.getKickMessages()) {
+            if (reason.contains(killReason.toLowerCase(Locale.ROOT))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void kickedInPvp(Player player) {
