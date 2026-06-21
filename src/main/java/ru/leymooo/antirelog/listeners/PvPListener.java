@@ -38,6 +38,7 @@ public class PvPListener implements Listener {
     private final Messages messages;
     private final Settings settings;
     private final Map<Player, AtomicInteger> allowedTeleports = new HashMap<>();
+    private final Map<UUID, CommandSpamState> commandSpam = new HashMap<>();
 
 
     public PvPListener(Plugin plugin, PvPManager pvpManager, Settings settings) {
@@ -131,6 +132,9 @@ public class PvPListener implements Listener {
                 return;
             }
             e.setCancelled(true);
+            if (handleCommandSpam(e.getPlayer())) {
+                return;
+            }
             String message = Utils.color(messages.getCommandsDisabled());
             if (!message.isEmpty()) {
                 e.getPlayer().sendMessage(Utils.replaceTime(message, pvpManager.getTimeRemainingInPvP(e.getPlayer())));
@@ -142,6 +146,7 @@ public class PvPListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onKick(PlayerKickEvent e) {
         Player player = e.getPlayer();
+        commandSpam.remove(player.getUniqueId());
 
         if (pvpManager.isInSilentPvP(player)) {
             pvpManager.stopPvPSilent(player);
@@ -195,6 +200,7 @@ public class PvPListener implements Listener {
     @EventHandler(priority = EventPriority.HIGHEST)
     public void onQuit(PlayerQuitEvent e) {
         allowedTeleports.remove(e.getPlayer());
+        commandSpam.remove(e.getPlayer().getUniqueId());
         if (settings.isHideLeaveMessage()) {
             e.setQuitMessage(null);
         }
@@ -215,6 +221,7 @@ public class PvPListener implements Listener {
 
     @EventHandler(priority = EventPriority.LOWEST)
     public void onDeath(PlayerDeathEvent e) {
+        commandSpam.remove(e.getEntity().getUniqueId());
         if (settings.isHideDeathMessage()) {
             e.setDeathMessage(null);
         }
@@ -279,5 +286,39 @@ public class PvPListener implements Listener {
             }
         }
         return null;
+    }
+
+    private boolean handleCommandSpam(Player player) {
+        int threshold = settings.getCommandSpamPunishThreshold();
+        int windowMillis = settings.getCommandSpamWindowSeconds() * 1000;
+        if (threshold <= 0 || windowMillis <= 0) {
+            return false;
+        }
+
+        long now = System.currentTimeMillis();
+        UUID uuid = player.getUniqueId();
+        CommandSpamState state = commandSpam.get(uuid);
+        if (state == null || now - state.firstCommandMillis > windowMillis) {
+            state = new CommandSpamState(now);
+            commandSpam.put(uuid, state);
+        }
+        state.count++;
+
+        if (state.count >= threshold) {
+            commandSpam.remove(uuid);
+            player.setHealth(0);
+            return true;
+        }
+        return false;
+    }
+
+    private static class CommandSpamState {
+
+        private final long firstCommandMillis;
+        private int count;
+
+        private CommandSpamState(long firstCommandMillis) {
+            this.firstCommandMillis = firstCommandMillis;
+        }
     }
 }

@@ -13,7 +13,7 @@ public class Settings extends Configuration {
 
     @Final
     @Key("config-version")
-    private String configVersion = "1.7";
+    private String configVersion = "1.9";
     private Messages messages = new Messages();
 
     @Comment("Кулдавн для обычных золотых яблок во время пвп.")
@@ -57,6 +57,14 @@ public class Settings extends Configuration {
             "commands-whitelist:", "- command", "- command2", "- /expand"})
     @Key("commands-whitelist")
     private List<String> whiteListedCommands = new ArrayList<>(0);
+
+    @Comment("How many blocked commands during PvP should kill the player. 0 disables this punishment.")
+    @Key("pvp-command-spam-punish-threshold")
+    private int commandSpamPunishThreshold = 6;
+
+    @Comment("Time window in seconds for pvp-command-spam-punish-threshold.")
+    @Key("pvp-command-spam-window-seconds")
+    private int commandSpamWindowSeconds = 4;
 
     @Key("cancel-interact-with-entities")
     @Comment("Отменять ли взаимодействие с энтити, во время пвп")
@@ -201,6 +209,14 @@ public class Settings extends Configuration {
         return whiteListedCommands;
     }
 
+    public int getCommandSpamPunishThreshold() {
+        return commandSpamPunishThreshold;
+    }
+
+    public int getCommandSpamWindowSeconds() {
+        return commandSpamWindowSeconds;
+    }
+
     public boolean isKillOnLeave() {
         return killOnLeave;
     }
@@ -283,6 +299,8 @@ public class Settings extends Configuration {
                 ", pvpTime=" + pvpTime +
                 ", disableCommandsInPvp=" + disableCommandsInPvp +
                 ", whiteListedCommands=" + whiteListedCommands +
+                ", commandSpamPunishThreshold=" + commandSpamPunishThreshold +
+                ", commandSpamWindowSeconds=" + commandSpamWindowSeconds +
                 ", cancelInteractWithEntities=" + cancelInteractWithEntities +
                 ", killOnLeave=" + killOnLeave +
                 ", killOnKick=" + killOnKick +
