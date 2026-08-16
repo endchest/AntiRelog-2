@@ -17,6 +17,7 @@ import ru.leymooo.antirelog.manager.BossbarManager;
 import ru.leymooo.antirelog.manager.CooldownManager;
 import ru.leymooo.antirelog.manager.PowerUpsManager;
 import ru.leymooo.antirelog.manager.PvPManager;
+import ru.leymooo.antirelog.manager.PvpBorderManager;
 import ru.leymooo.antirelog.util.ProtocolLibUtils;
 import ru.leymooo.antirelog.util.VersionUtils;
 
@@ -36,6 +37,7 @@ public class Antirelog extends JavaPlugin {
     private Settings settings;
     private PvPManager pvpManager;
     private CooldownManager cooldownManager;
+    private PvpBorderManager pvpBorderManager;
     private boolean protocolLib;
     private boolean worldguard;
 
@@ -54,15 +56,35 @@ public class Antirelog extends JavaPlugin {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (args.length > 0 && sender.hasPermission("antirelog.reload")) {
-            if (args[0].equalsIgnoreCase("reload") ) {
+        if (args.length > 0) {
+            if (args[0].equalsIgnoreCase("reload") && sender.hasPermission("antirelog.reload")) {
                 reloadSettings();
                 sender.sendMessage("§aReloaded");
                 getLogger().info(settings.toString());
+                return true;
             }
-            if (args[0].equalsIgnoreCase("test") ) {
+            if (args[0].equalsIgnoreCase("unpvp") && sender.hasPermission("antirelog.admin")) {
+                if (args.length < 2) {
+                    sender.sendMessage("§cИспользование: /antirelog unpvp <player>");
+                    return true;
+                }
+                Player target = Bukkit.getPlayer(args[1]);
+                if (target == null) {
+                    sender.sendMessage("§cИгрок §e" + args[1] + " §cне найден.");
+                    return true;
+                }
+                if (!pvpManager.isInPvP(target) && !pvpManager.isInSilentPvP(target)) {
+                    sender.sendMessage("§cИгрок §e" + target.getName() + " §cне находится в PvP.");
+                    return true;
+                }
+                pvpManager.stopPvP(target);
+                sender.sendMessage("§aPvP режим снят с игрока §e" + target.getName());
+                return true;
+            }
+            if (args[0].equalsIgnoreCase("test") && sender.hasPermission("antirelog.reload")) {
                 getPvpManager().tryStartPvP((Player) sender, (Player) sender);
                 sender.sendMessage("§aTest");
+                return true;
             }
         }
         return true;
@@ -177,6 +199,9 @@ public class Antirelog extends JavaPlugin {
         pvpManager.onPluginDisable();
         pvpManager.onPluginEnable();
         cooldownManager.clearAll();
+        if (pvpBorderManager != null) {
+            pvpBorderManager.clearAll();
+        }
     }
 
     public boolean isProtocolLibEnabled() {
@@ -191,6 +216,8 @@ public class Antirelog extends JavaPlugin {
         if (Bukkit.getPluginManager().isPluginEnabled("WorldGuard")) {
             WorldGuardWrapper.getInstance().registerEvents(this);
             Bukkit.getPluginManager().registerEvents(new WorldGuardListener(settings, pvpManager), this);
+            pvpBorderManager = new PvpBorderManager(settings, pvpManager);
+            Bukkit.getPluginManager().registerEvents(pvpBorderManager, this);
             worldguard = true;
         }
         protocolLib = Bukkit.getPluginManager().isPluginEnabled("ProtocolLib") && VersionUtils.isVersion(9);

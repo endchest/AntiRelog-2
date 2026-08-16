@@ -143,6 +143,23 @@ public class Settings extends Configuration {
     @Ignore
     private Set<String> disabledWorldsSet;
 
+    @Comment({"Список регионов WorldGuard, в которых показывается визуальный барьер при активном режиме боя.",
+            "Формат: мир:регион (нижний регистр). Если список пуст — барьеры отключены.",
+            "На версиях 1.18+ показывает WorldBorder только для конкретного игрока.",
+            "На любой версии блокирует выход за границы региона через движение.",
+            "Пример:",
+            "pvp-border-regions:",
+            "- world:pvp_arena",
+            "- world_nether:fight_zone"})
+    @Key("pvp-border-regions")
+    private List<String> pvpBorderRegions = new ArrayList<>(0);
+    @Ignore
+    private Set<String> pvpBorderRegionsSet;
+
+    @Comment("На каком расстоянии от барьера начинается красная предупредительная подсветка (блоки). Только для 1.18+.")
+    @Key("pvp-border-warning-distance")
+    private int pvpBorderWarningDistance = 10;
+
     @Comment({"Кулдавн для якорей возрождения во время пвп.", "Значение 0 отключает кулдаун; -1 отключает использование во время пвп"})
     @Key("respawn-anchor-cooldown")
     private int respawnAnchorCooldown = 30;
@@ -155,6 +172,7 @@ public class Settings extends Configuration {
     public void loaded() {
         this.ignoredWgRegionsSet = ignoredWgRegions.stream().map(String::toLowerCase).collect(Collectors.toSet());
         this.disabledWorldsSet = disabledWorlds.stream().map(String::toLowerCase).collect(Collectors.toSet());
+        this.pvpBorderRegionsSet = pvpBorderRegions.stream().map(String::toLowerCase).collect(Collectors.toSet());
     }
 
     public String getConfigVersion() {
@@ -277,6 +295,14 @@ public class Settings extends Configuration {
         return disabledWorldsSet;
     }
 
+    public Set<String> getPvpBorderRegions() {
+        return pvpBorderRegionsSet;
+    }
+
+    public int getPvpBorderWarningDistance() {
+        return pvpBorderWarningDistance;
+    }
+
     public int getRespawnAnchorCooldown() {
         return respawnAnchorCooldown;
     }
@@ -318,6 +344,8 @@ public class Settings extends Configuration {
                 ", hideLeaveMessage=" + hideLeaveMessage +
                 ", hideDeathMessage=" + hideDeathMessage +
                 ", disabledWorlds=" + disabledWorlds +
+                ", pvpBorderRegions=" + pvpBorderRegions +
+                ", pvpBorderWarningDistance=" + pvpBorderWarningDistance +
                 '}';
     }
 }

@@ -25,13 +25,14 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class PvPListener implements Listener {
 
     private final static String META_KEY = "ar-f-shooter";
-    private final static List<String> SERVER_SPAM_KICK_REASONS = Arrays.asList("spam");
+    private final static List<String> SERVER_SPAM_KICK_REASONS = Arrays.asList("spam", "спам");
 
     private final Plugin plugin;
     private final PvPManager pvpManager;
@@ -205,6 +206,8 @@ public class PvPListener implements Listener {
             e.setQuitMessage(null);
         }
         if (pvpManager.isInPvP(e.getPlayer())) {
+            // Сохраняем оппонентов ДО остановки PvP, так как stopPvPSilent очищает карту
+            Set<Player> opponents = pvpManager.getOpponents(e.getPlayer());
             pvpManager.stopPvPSilent(e.getPlayer());
             if (settings.isKillOnLeave()) {
                 sendLeavedInPvpMessage(e.getPlayer());
@@ -213,6 +216,12 @@ public class PvPListener implements Listener {
                 pvpManager.stopPvPSilent(e.getPlayer());
             }
             runCommands(e.getPlayer());
+            // Снимаем режим боя с оппонентов, у которых не осталось других активных противников
+            for (Player opponent : opponents) {
+                if (pvpManager.isInPvP(opponent) && pvpManager.getOpponents(opponent).isEmpty()) {
+                    pvpManager.stopPvP(opponent);
+                }
+            }
         }
         if (pvpManager.isInSilentPvP(e.getPlayer())) {
             pvpManager.stopPvPSilent(e.getPlayer());

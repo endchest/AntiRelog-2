@@ -19,6 +19,7 @@ import ru.leymooo.antirelog.util.Utils;
 import ru.leymooo.antirelog.util.VersionUtils;
 
 import java.util.*;
+import java.util.stream.Collectors;
 
 public class PvPManager {
 
@@ -26,6 +27,9 @@ public class PvPManager {
     private final Antirelog plugin;
     private final Map<Player, Integer> pvpMap = new HashMap<>();
     private final Map<Player, Integer> silentPvpMap = new HashMap<>();
+    // Карта противников: для каждого non-bypassed игрока — множество тех, с кем он сейчас в бою.
+    // Используется для снятия боя со второго игрока при выходе первого.
+    private final Map<Player, Set<Player>> pvpOpponents = new HashMap<>();
     private final PowerUpsManager powerUpsManager;
     private final BossbarManager bossbarManager;
     private final Set<String> whiteListedCommands = new HashSet<>();
@@ -40,6 +44,8 @@ public class PvPManager {
 
     public void onPluginDisable() {
         pvpMap.clear();
+        silentPvpMap.clear();
+        pvpOpponents.clear();
         this.bossbarManager.clearBossbars();
     }
 
@@ -108,6 +114,10 @@ public class PvPManager {
                 return;
             }
 
+            if (attacker.getGameMode() == GameMode.SPECTATOR || defender.getGameMode() == GameMode.SPECTATOR) {
+                return;
+            }
+
             if (attacker.hasMetadata("NPC") || defender.hasMetadata("NPC")) {
                 return;
             }
@@ -155,6 +165,7 @@ public class PvPManager {
         if (attackerInPvp && defenderInPvp) {
             updateAttackerAndCallEvent(attacker, defender, attackerBypassed);
             updateDefenderAndCallEvent(defender, attacker, defenderBypassed);
+            addOpponents(attacker, defender);
             return;
         } else if (attackerInPvp) {
             pvpStatus = PvPStatus.ATTACKER_IN_PVP;
@@ -170,6 +181,7 @@ public class PvPManager {
                     updateDefenderAndCallEvent(defender, attacker, defenderBypassed);
                     startPvp(attacker, attackerBypassed, true, defender.getName());
                 }
+                addOpponents(attacker, defender);
                 Bukkit.getPluginManager().callEvent(new PvpStartedEvent(defender, attacker, settings.getPvpTime(), pvpStatus));
             }
             return;
@@ -178,6 +190,7 @@ public class PvPManager {
         if (callPvpPreStartEvent(defender, attacker, pvpStatus)) {
             startPvp(attacker, attackerBypassed, true, defender.getName());
             startPvp(defender, defenderBypassed, false, attacker.getName());
+            addOpponents(attacker, defender);
             Bukkit.getPluginManager().callEvent(new PvpStartedEvent(defender, attacker, settings.getPvpTime(), pvpStatus));
         }
 
@@ -263,7 +276,23 @@ public class PvPManager {
         pvpMap.remove(player);
         bossbarManager.clearBossbar(player);
         silentPvpMap.remove(player);
+        pvpOpponents.remove(player);
+        pvpOpponents.values().forEach(set -> set.remove(player));
         Bukkit.getPluginManager().callEvent(new PvpStoppedEvent(player));
+    }
+
+    // Связывает двух игроков как оппонентов друг друга (только non-bypassed).
+    private void addOpponents(Player a, Player b) {
+        if (!isHasBypassPermission(a) && !isHasBypassPermission(b)) {
+            pvpOpponents.computeIfAbsent(a, k -> new HashSet<>()).add(b);
+            pvpOpponents.computeIfAbsent(b, k -> new HashSet<>()).add(a);
+        }
+    }
+
+    // Возвращает множество текущих оппонентов игрока (копию, чтобы избежать ConcurrentModification).
+    public Set<Player> getOpponents(Player player) {
+        Set<Player> opponents = pvpOpponents.get(player);
+        return opponents != null ? new HashSet<>(opponents) : Collections.emptySet();
     }
 
     public boolean isCommandWhiteListed(String command) {
