@@ -23,7 +23,7 @@ public class CooldownManager {
     private final Settings settings;
     private final ScheduledExecutorService scheduledExecutorService;
     private final Table<Player, CooldownType, Long> cooldowns = HashBasedTable.create();
-    private final Table<Player, CooldownType, ScheduledFuture> futures = HashBasedTable.create();
+    private final Table<Player, CooldownType, CooldownRemoval> removalTasks = HashBasedTable.create();
 
     public CooldownManager(Antirelog plugin, Settings settings) {
         this.plugin = plugin;
@@ -42,24 +42,39 @@ public class CooldownManager {
     public void addItemCooldown(Player player, CooldownType type, long duration) {
         if (!VersionUtils.isVersion(11)) return;
 
+        cancelRemovalTask(player, type, false);
+
         int durationInTicks = (int) Math.ceil(duration / 50.0);
         player.setCooldown(type.getMaterial(), durationInTicks);
 
-        ScheduledFuture future = scheduledExecutorService.schedule(() -> {
-            removeItemCooldown(player, type);
+        if (scheduledExecutorService == null) return;
+
+        CooldownRemoval removal = new CooldownRemoval();
+        ScheduledFuture<?> future = scheduledExecutorService.schedule(() -> {
+            if (!plugin.isEnabled()) return;
+
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (removalTasks.get(player, type) == removal) {
+                    removeItemCooldown(player, type);
+                }
+            });
         }, duration, TimeUnit.MILLISECONDS);
-        futures.put(player, type, future);
+        removal.setFuture(future);
+        removalTasks.put(player, type, removal);
     }
 
     public void removeItemCooldown(Player player, CooldownType type) {
         if (!VersionUtils.isVersion(11)) return;
 
-        ScheduledFuture future = futures.get(player, type);
-        if (future != null && !future.isCancelled()) {
-            future.cancel(false);
-            futures.remove(player, type);
-        }
+        cancelRemovalTask(player, type, false);
         player.setCooldown(type.getMaterial(), 0);
+    }
+
+    private void cancelRemovalTask(Player player, CooldownType type, boolean mayInterruptIfRunning) {
+        CooldownRemoval removal = removalTasks.remove(player, type);
+        if (removal != null) {
+            removal.cancel(mayInterruptIfRunning);
+        }
     }
 
     public void enteredToPvp(Player player) {
@@ -103,21 +118,35 @@ public class CooldownManager {
 
     public void remove(Player player) {
         cooldowns.row(player).clear();
-        futures.row(player).forEach((ignore, future) -> future.cancel(false));
-        futures.row(player).clear();
+        removalTasks.row(player).forEach((ignore, removal) -> removal.cancel(false));
+        removalTasks.row(player).clear();
     }
 
     public void clearAll() {
-        futures.rowMap().forEach((p, map) -> map.forEach((i, f) -> {
-            f.cancel(true);
-            removeItemCooldown(p, i);
+        removalTasks.rowMap().forEach((player, tasks) -> tasks.forEach((type, removal) -> {
+            removal.cancel(true);
+            player.setCooldown(type.getMaterial(), 0);
         }));
-        futures.clear();
+        removalTasks.clear();
         cooldowns.clear();
     }
 
     public Settings getSettings() {
         return settings;
+    }
+
+    private static final class CooldownRemoval {
+        private ScheduledFuture<?> future;
+
+        private void setFuture(ScheduledFuture<?> future) {
+            this.future = future;
+        }
+
+        private void cancel(boolean mayInterruptIfRunning) {
+            if (future != null && !future.isCancelled()) {
+                future.cancel(mayInterruptIfRunning);
+            }
+        }
     }
 
     public enum CooldownType {
